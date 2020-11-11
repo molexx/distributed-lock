@@ -48,7 +48,7 @@ public class SimpleMongoLock extends AbstractSimpleLock {
   }
 
   @Override
-  protected String acquire(final String key, final String storeId, final String token, final long expiration) {
+  protected String acquire(final String key, final String storeId, final String token, final long expiration, final String alreadyHeldKeyToken) {
     final Query query = Query.query(Criteria.where("_id").is(key));
     final Update update = new Update()
       .setOnInsert("_id", key)

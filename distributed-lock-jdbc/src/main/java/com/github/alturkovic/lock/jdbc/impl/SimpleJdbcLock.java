@@ -37,7 +37,7 @@ public class SimpleJdbcLock extends AbstractSimpleLock {
   }
 
   @Override
-  protected String acquire(final String key, final String storeId, final String token, final long expiration) {
+  protected String acquire(final String key, final String storeId, final String token, final long expiration, final String alreadyHeldToken) {
     return lockSingleKeyService.acquire(key, storeId, token, expiration);
   }
 

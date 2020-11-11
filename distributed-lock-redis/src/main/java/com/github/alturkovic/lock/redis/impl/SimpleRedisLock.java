@@ -40,6 +40,8 @@ import org.springframework.data.redis.core.script.RedisScript;
 public class SimpleRedisLock extends AbstractSimpleLock {
   private static final String LOCK_SCRIPT = "return redis.call('SET', KEYS[1], ARGV[1], 'PX', tonumber(ARGV[2]), 'NX') and true or false";
 
+  private static final String LOCK_FIND_EXISTING_SCRIPT = "return redis.call('GET', KEYS[1]) == ARGV[1] or false";
+  
   private static final String LOCK_RELEASE_SCRIPT = "return redis.call('GET', KEYS[1]) == ARGV[1] and (redis.call('DEL', KEYS[1]) == 1) or false";
 
   private static final String LOCK_REFRESH_SCRIPT = "if redis.call('GET', KEYS[1]) == ARGV[1] then\n" +
@@ -49,6 +51,7 @@ public class SimpleRedisLock extends AbstractSimpleLock {
     "return false";
 
   private final RedisScript<Boolean> lockScript = new DefaultRedisScript<>(LOCK_SCRIPT, Boolean.class);
+  private final RedisScript<Boolean> lockExistingScript = new DefaultRedisScript<>(LOCK_FIND_EXISTING_SCRIPT, Boolean.class);
   private final RedisScript<Boolean> lockReleaseScript = new DefaultRedisScript<>(LOCK_RELEASE_SCRIPT, Boolean.class);
   private final RedisScript<Boolean> lockRefreshScript = new DefaultRedisScript<>(LOCK_REFRESH_SCRIPT, Boolean.class);
 
@@ -59,9 +62,32 @@ public class SimpleRedisLock extends AbstractSimpleLock {
     this.stringRedisTemplate = stringRedisTemplate;
   }
 
+  /**
+   * If alreadyHeldToken was passed, first check in the store that the key is already held with that token. If true, return with the token.
+   * 
+   * 
+   * @param key
+   * @param storeId
+   * @param token
+   * @param expiration
+   * @param alreadyHeldToken set if reentrancy is enabled and this Thread already holds a lock on this key
+   * @return
+   */
   @Override
-  protected String acquire(final String key, final String storeId, final String token, final long expiration) {
+  protected String acquire(final String key, final String storeId, final String token, final long expiration, final String alreadyHeldToken) {
     final List<String> singletonKeyList = Collections.singletonList(storeId + ":" + key);
+    if (alreadyHeldToken != null) {
+      log.trace("alreadyHeldToken passed, checking to see if existing lock has that token: {}", key, storeId, alreadyHeldToken);
+      final boolean alreadyLocked = stringRedisTemplate.execute(lockExistingScript, singletonKeyList, alreadyHeldToken);
+      if (alreadyLocked) {
+        log.debug("Lock for key {} in store {}, is already held by this Thread, returning TOKEN_RESPONSE_ALL_KEYS_ALREADY_HELD.", key, storeId);
+        return alreadyHeldToken;
+      }
+      log.warn("Lock for key {} in store {}, is not already held by this Thread despite alreadyHeldToken - maybe it has reached TTL. Will try to grab it...", key, storeId);
+    }
+    
+    //either alreadyHeldToken was not passed or the key is not in the store with it. 
+    //TODO enhance redis query LOCK_SCRIPT to return true if an entry exists for the key and has the value if alreadyHeldToken?
     final boolean locked = stringRedisTemplate.execute(lockScript, singletonKeyList, token, String.valueOf(expiration));
     log.debug("Tried to acquire lock for key {} with token {} in store {}. Locked: {}", key, token, storeId, locked);
     return locked ? token : null;

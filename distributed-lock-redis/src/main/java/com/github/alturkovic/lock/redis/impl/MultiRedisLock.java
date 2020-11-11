@@ -25,7 +25,12 @@
 package com.github.alturkovic.lock.redis.impl;
 
 import com.github.alturkovic.lock.Lock;
+import com.github.alturkovic.lock.ReentrantUtils;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -88,6 +93,7 @@ public class MultiRedisLock implements Lock {
 
   @Override
   public String acquire(final List<String> keys, final String storeId, final long expiration) {
+    log.debug("acquire(): called with keys: '" + keys + "'");
     final List<String> keysWithStoreIdPrefix = keys.stream().map(key -> storeId + ":" + key).collect(Collectors.toList());
     final String token = tokenSupplier.get();
 
@@ -95,22 +101,77 @@ public class MultiRedisLock implements Lock {
       throw new IllegalStateException("Cannot lock with empty token");
     }
 
-    final boolean locked = stringRedisTemplate.execute(lockScript, keysWithStoreIdPrefix, token, String.valueOf(expiration));
-    log.debug("Tried to acquire lock for keys {} in store {} with token {}. Locked: {}", keys, storeId, token, locked);
+    log.debug("acquire(): calling getAlreadyHeldKeysAndTokens()...");
+    Map<String, String> alreadyHeldKeyTokens = ReentrantUtils.getAlreadyHeldKeysAndTokens();  //can be null!
+    log.debug("acquire(): getAlreadyHeldKeysAndTokens() returned alreadyHeldKeyTokens: {}", alreadyHeldKeyTokens);
+    
+    // TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!
+    // this does not handle TTLs. 
+    // We actually need to check all passed keys are still in the store with the expected token, if not try to re-grab them and update the token in the Thread's Map.
+    List<String> keysNotAlreadyAllegedlyAllocatedToThisThread;
+    if (alreadyHeldKeyTokens != null) {
+      keysNotAlreadyAllegedlyAllocatedToThisThread = keysWithStoreIdPrefix.stream().filter(key -> !alreadyHeldKeyTokens.containsKey(key)).collect(Collectors.toList());
+    } else {
+      keysNotAlreadyAllegedlyAllocatedToThisThread = keysWithStoreIdPrefix;
+    }
+  
+    final boolean locked;
+    if (keysNotAlreadyAllegedlyAllocatedToThisThread.size() > 0) {
+      log.trace("Tried to acquire redis lock for keys {} in store {} with token {}...", keysNotAlreadyAllegedlyAllocatedToThisThread, storeId, token);
+      locked = stringRedisTemplate.execute(lockScript, keysNotAlreadyAllegedlyAllocatedToThisThread, token, String.valueOf(expiration));
+      log.debug("Tried to acquire lock for keys {} in store {} with token {}. Locked: {}", keysNotAlreadyAllegedlyAllocatedToThisThread, storeId, token, locked);
+    } else {
+      log.trace("keysNotAlreadyAllegedlyAllocatedToThisThread is empty, nothing to lock in redis.");
+      locked = true;
+    }
+    // TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!   TEMP HACK!
+  
+    
+    
+    if (locked) {
+      //TODO only if reentrancy is enabled for this acquire()
+      //acquired ok, possibly using existing token
+      
+      Map<String, String> keysAndTokens = new HashMap<>();
+      for (String key : keysWithStoreIdPrefix) {
+        String tokenForKey;
+        //TODO if an existing key reached TTL and needed to be re-acquired with the new token, use the new token here
+        if (keysNotAlreadyAllegedlyAllocatedToThisThread.contains(key)) {
+          tokenForKey = token;
+        } else {
+          tokenForKey = alreadyHeldKeyTokens.get(key);
+        }
+        keysAndTokens.put(key, tokenForKey);
+      }
+      
+      log.debug("acquire(): calling updateAllocationsAfterLock() with keysAndTokens: '{}'", keysAndTokens);
+      ReentrantUtils.updateAllocationsAfterLock(keysAndTokens, token);
+    }
+    
     return locked ? token : null;
   }
 
   @Override
-  public boolean release(final List<String> keys, final String storeId, final String token) {
+  public boolean release(final Collection<String> keys, final String storeId, final String token) {
     final List<String> keysWithStoreIdPrefix = keys.stream().map(key -> storeId + ":" + key).collect(Collectors.toList());
+    
+    log.debug("release(): called with keys: " + keys + ", calling decrementAndGetTokensToReleaseFromStore()...");
+    Map<String, String> keysWithTokensToReleaseFromStores = ReentrantUtils.decrementAndGetTokensToReleaseFromStore(keysWithStoreIdPrefix, token);
+    log.trace("release(): decrementAndGetTokensToReleaseFromStore() returned " + keysWithTokensToReleaseFromStores.size() + " keysWithTokensToReleaseFromStores...");
 
-    final boolean released = stringRedisTemplate.execute(lockReleaseScript, keysWithStoreIdPrefix, token);
-    if (released) {
-      log.debug("Release script deleted the record for keys {} with token {} in store {}", keys, token, storeId);
+    if (! keysWithTokensToReleaseFromStores.isEmpty()) {
+      List<String> listOfKeys = new ArrayList<>(keysWithTokensToReleaseFromStores.keySet());
+      //TODO lockReleaseScript should accept different token per key in case they reached TTL and were re-acquired
+      final boolean released = stringRedisTemplate.execute(lockReleaseScript, listOfKeys, token);
+      if (released) {
+        log.debug("Release script deleted the record for keys {} with token {} in store {}", keys, token, storeId);
+      } else {
+        log.error("Release script failed for keys {} with token {} in store {}", keys, token, storeId);
+      }
+      return released;
     } else {
-      log.error("Release script failed for keys {} with token {} in store {}", keys, token, storeId);
+      return true;
     }
-    return released;
   }
 
   @Override

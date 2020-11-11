@@ -26,6 +26,7 @@ package com.github.alturkovic.lock.retry;
 
 import com.github.alturkovic.lock.Lock;
 import com.github.alturkovic.lock.exception.LockNotAvailableException;
+import java.util.Collection;
 import java.util.List;
 import lombok.Data;
 import org.springframework.retry.support.RetryTemplate;
@@ -54,7 +55,7 @@ public class RetriableLock implements Lock {
   }
 
   @Override
-  public boolean release(final List<String> keys, final String storeId, final String token) {
+  public boolean release(final Collection<String> keys, final String storeId, final String token) {
     return lock.release(keys, storeId, token);
   }
 

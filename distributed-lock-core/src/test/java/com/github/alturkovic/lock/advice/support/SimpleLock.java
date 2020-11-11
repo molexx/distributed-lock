@@ -26,6 +26,7 @@ package com.github.alturkovic.lock.advice.support;
 
 import com.github.alturkovic.lock.Lock;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,7 +64,7 @@ public class SimpleLock implements Lock {
   }
 
   @Override
-  public boolean release(final List<String> keys, final String storeId, final String token) {
+  public boolean release(final Collection<String> keys, final String storeId, final String token) {
     log.debug("Releasing keys {} in store {} with token {}", keys, storeId, token);
     final List<LockedKey> lockedKeys = lockMap.get(storeId);
 

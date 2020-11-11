@@ -24,6 +24,7 @@
 
 package com.github.alturkovic.lock;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface Lock {
@@ -46,7 +47,7 @@ public interface Lock {
    * @param token   token used to check if lock is still held by this lock
    * @return {@code true} if lock was successfully released, {@code false} otherwise
    */
-  boolean release(List<String> keys, String storeId, String token);
+  boolean release(Collection<String> keys, String storeId, String token);
 
   /**
    * Try to refresh the lock expiration.

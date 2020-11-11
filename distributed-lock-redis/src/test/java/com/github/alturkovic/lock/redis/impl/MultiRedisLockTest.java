@@ -25,6 +25,7 @@
 package com.github.alturkovic.lock.redis.impl;
 
 import com.github.alturkovic.lock.Lock;
+import com.github.alturkovic.lock.ReentrantUtils;
 import com.github.alturkovic.lock.redis.embedded.EmbeddedRedis;
 import java.util.Arrays;
 import java.util.Collections;
@@ -67,6 +68,11 @@ public class MultiRedisLockTest implements InitializingBean {
       connection.flushDb();
       return null;
     });
+  }
+
+  @Before
+  public void clearAllocationsInThreadLocal() {
+    ReentrantUtils.clearThreadLocalMap();
   }
 
   @Test

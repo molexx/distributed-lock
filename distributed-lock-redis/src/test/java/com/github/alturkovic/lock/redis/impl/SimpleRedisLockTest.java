@@ -25,6 +25,7 @@
 package com.github.alturkovic.lock.redis.impl;
 
 import com.github.alturkovic.lock.Lock;
+import com.github.alturkovic.lock.ReentrantUtils;
 import com.github.alturkovic.lock.redis.embedded.EmbeddedRedis;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
@@ -67,6 +68,11 @@ public class SimpleRedisLockTest implements InitializingBean {
     });
   }
 
+  @Before
+  public void clearAllocationsInThreadLocal() {
+    ReentrantUtils.clearThreadLocalMap();
+  }
+  
   @Test
   public void shouldLock() {
     final String token = lock.acquire(Collections.singletonList("1"), "locks", 1000);

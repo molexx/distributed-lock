@@ -25,6 +25,7 @@
 package com.github.alturkovic.lock.mongo.impl;
 
 import com.github.alturkovic.lock.Lock;
+import com.github.alturkovic.lock.ReentrantUtils;
 import com.github.alturkovic.lock.mongo.model.LockDocument;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -64,6 +65,11 @@ public class SimpleMongoLockTest implements InitializingBean {
     mongoTemplate.dropCollection("locks");
   }
 
+  @Before
+  public void clearAllocationsInThreadLocal() {
+    ReentrantUtils.clearThreadLocalMap();
+  }
+  
   @Test
   public void shouldLock() {
     final LocalDateTime expectedExpiration = LocalDateTime.now().plus(1000, ChronoUnit.MILLIS);

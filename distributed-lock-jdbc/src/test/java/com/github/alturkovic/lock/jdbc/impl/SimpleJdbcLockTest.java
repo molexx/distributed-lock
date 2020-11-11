@@ -25,6 +25,7 @@
 package com.github.alturkovic.lock.jdbc.impl;
 
 import com.github.alturkovic.lock.Lock;
+import com.github.alturkovic.lock.ReentrantUtils;
 import com.github.alturkovic.lock.jdbc.service.SimpleJdbcLockSingleKeyService;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -36,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.assertj.core.data.Offset;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.InitializingBean;
@@ -67,6 +69,11 @@ public class SimpleJdbcLockTest implements InitializingBean {
   public void afterPropertiesSet() {
     // instead of writing a custom test configuration, we can just initialize it after autowiring mongoTemplate with a custom tokenSupplier
     lock = new SimpleJdbcLock(() -> "abc", new SimpleJdbcLockSingleKeyService(jdbcTemplate));
+  }
+
+  @Before
+  public void clearAllocationsInThreadLocal() {
+    ReentrantUtils.clearThreadLocalMap();
   }
 
   @Test
